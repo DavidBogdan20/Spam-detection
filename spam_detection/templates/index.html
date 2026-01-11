@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Spam Shield - AI-Powered Spam Detection</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Sidebar -->
+        <aside class="sidebar">
+            <div class="logo">
+                <div class="logo-icon">🛡️</div>
+                <span class="logo-text">Spam Shield</span>
+            </div>
+            
+            <nav class="nav-menu">
+                <a href="/" class="nav-item active">
+                    <span class="nav-icon">📥</span>
+                    <span>Inbox</span>
+                    <span class="badge" id="inbox-count">0</span>
+                </a>
+                <a href="#" class="nav-item" onclick="filterMessages('spam'); return false;">
+                    <span class="nav-icon">⚠️</span>
+                    <span>Spam</span>
+                    <span class="badge danger" id="spam-count">0</span>
+                </a>
+                <a href="#" class="nav-item" onclick="filterMessages('ham'); return false;">
+                    <span class="nav-icon">✅</span>
+                    <span>Safe</span>
+                    <span class="badge success" id="ham-count">0</span>
+                </a>
+                <a href="/dashboard" class="nav-item">
+                    <span class="nav-icon">📊</span>
+                    <span>Dashboard</span>
+                </a>
+            </nav>
+            
+            <div class="sidebar-footer">
+                <div class="model-status">
+                    <div class="status-dot"></div>
+                    <span>AI Model Active</span>
+                </div>
+            </div>
+        </aside>
+        
+        <!-- Main Content -->
+        <main class="main-content">
+            <!-- Header -->
+            <header class="header">
+                <div class="header-left">
+                    <h1>Inbox</h1>
+                    <p class="header-subtitle" id="total-messages">Loading messages...</p>
+                </div>
+                <div class="header-right">
+                    <button class="btn btn-secondary" onclick="refreshMessages()">
+                        <span>🔄</span> Refresh
+                    </button>
+                    <button class="btn btn-primary" onclick="openComposeModal()">
+                        <span>✏️</span> Test Message
+                    </button>
+                </div>
+            </header>
+            
+            <!-- Messages List -->
+            <div class="messages-container">
+                <div class="messages-header">
+                    <div class="filter-tabs">
+                        <button class="filter-tab active" onclick="filterMessages('all')">All</button>
+                        <button class="filter-tab" onclick="filterMessages('spam')">Spam</button>
+                        <button class="filter-tab" onclick="filterMessages('ham')">Safe</button>
+                    </div>
+                    <div class="sort-options">
+                        <select id="sort-by" onchange="sortMessages()">
+                            <option value="confidence">Sort by Confidence</option>
+                            <option value="prediction">Sort by Classification</option>
+                        </select>
+                    </div>
+                </div>
+                
+                <div class="messages-list" id="messages-list">
+                    <!-- Messages will be inserted here -->
+                    <div class="loading-state">
+                        <div class="loading-spinner"></div>
+                        <p>Analyzing messages...</p>
+                    </div>
+                </div>
+            </div>
+        </main>
+        
+        <!-- Message Detail Panel -->
+        <aside class="detail-panel" id="detail-panel">
+            <div class="detail-empty">
+                <div class="empty-icon">📧</div>
+                <h3>No message selected</h3>
+                <p>Click on a message to view details</p>
+            </div>
+            
+            <div class="detail-content" id="detail-content" style="display: none;">
+                <div class="detail-header">
+                    <h2 id="detail-subject">Message Details</h2>
+                    <div class="detail-classification" id="detail-classification">
+                        <span class="classification-badge">Analyzing...</span>
+                    </div>
+                </div>
+                
+                <div class="confidence-meter">
+                    <label>AI Confidence</label>
+                    <div class="meter-bar">
+                        <div class="meter-fill" id="confidence-fill" style="width: 0%"></div>
+                    </div>
+                    <span class="meter-value" id="confidence-value">0%</span>
+                </div>
+                
+                <div class="detail-body">
+                    <h4>Message Content</h4>
+                    <div class="message-full-content" id="message-full-content">
+                        <!-- Full message content -->
+                    </div>
+                </div>
+                
+                <div class="detail-actions">
+                    <h4>Feedback</h4>
+                    <p class="feedback-hint">Help improve the AI by correcting mistakes</p>
+                    <div class="action-buttons">
+                        <button class="btn btn-danger" onclick="submitFeedback(1)">
+                            <span>🚫</span> This is Spam
+                        </button>
+                        <button class="btn btn-success" onclick="submitFeedback(0)">
+                            <span>✓</span> Not Spam
+                        </button>
+                    </div>
+                </div>
+                
+                <div class="detail-metadata">
+                    <h4>Analysis Details</h4>
+                    <div class="metadata-grid">
+                        <div class="metadata-item">
+                            <span class="metadata-label">Spam Probability</span>
+                            <span class="metadata-value" id="spam-prob">-</span>
+                        </div>
+                        <div class="metadata-item">
+                            <span class="metadata-label">Ham Probability</span>
+                            <span class="metadata-value" id="ham-prob">-</span>
+                        </div>
+                        <div class="metadata-item">
+                            <span class="metadata-label">True Label</span>
+                            <span class="metadata-value" id="true-label">-</span>
+                        </div>
+                        <div class="metadata-item">
+                            <span class="metadata-label">Message Length</span>
+                            <span class="metadata-value" id="msg-length">-</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </aside>
+    </div>
+    
+    <!-- Compose/Test Modal -->
+    <div class="modal" id="compose-modal">
+        <div class="modal-backdrop" onclick="closeComposeModal()"></div>
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Test Message Classification</h2>
+                <button class="modal-close" onclick="closeComposeModal()">×</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label for="test-message">Enter a message to classify:</label>
+                    <textarea id="test-message" rows="5" placeholder="Type or paste a message here..."></textarea>
+                </div>
+                <div class="test-result" id="test-result" style="display: none;">
+                    <div class="result-header">
+                        <span class="result-badge" id="result-badge">-</span>
+                        <span class="result-confidence" id="result-confidence">-</span>
+                    </div>
+                    <div class="result-details">
+                        <div class="result-bar">
+                            <div class="result-bar-spam" id="result-bar-spam" style="width: 50%"></div>
+                        </div>
+                        <div class="result-labels">
+                            <span>Ham</span>
+                            <span>Spam</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="closeComposeModal()">Close</button>
+                <button class="btn btn-primary" onclick="testMessage()">
+                    <span>🔍</span> Analyze
+                </button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Toast Notification -->
+    <div class="toast-container" id="toast-container"></div>
+    
+    <script src="/static/js/app.js"></script>
+</body>
+</html>

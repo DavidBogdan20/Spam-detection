@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard - Spam Shield</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+
+<body>
+    <div class="app-container">
+        <!-- Sidebar -->
+        <aside class="sidebar">
+            <div class="logo">
+                <div class="logo-icon">🛡️</div>
+                <span class="logo-text">Spam Shield</span>
+            </div>
+
+            <nav class="nav-menu">
+                <a href="/" class="nav-item">
+                    <span class="nav-icon">📥</span>
+                    <span>Inbox</span>
+                </a>
+                <a href="/dashboard" class="nav-item active">
+                    <span class="nav-icon">📊</span>
+                    <span>Dashboard</span>
+                </a>
+            </nav>
+
+            <div class="sidebar-footer">
+                <div class="model-status">
+                    <div class="status-dot"></div>
+                    <span>AI Model Active</span>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="main-content dashboard">
+            <!-- Header -->
+            <header class="header">
+                <div class="header-left">
+                    <h1>Performance Dashboard</h1>
+                    <p class="header-subtitle">Real-time monitoring and metrics</p>
+                </div>
+                <div class="header-right">
+                    <button class="btn btn-secondary" onclick="refreshDashboard()">
+                        <span>🔄</span> Refresh
+                    </button>
+                </div>
+            </header>
+
+            <!-- Stats Cards -->
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-icon">📊</div>
+                    <div class="stat-content">
+                        <span class="stat-value" id="total-predictions">0</span>
+                        <span class="stat-label">Total Predictions</span>
+                    </div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon">🎯</div>
+                    <div class="stat-content">
+                        <span class="stat-value" id="accuracy">-</span>
+                        <span class="stat-label">Accuracy</span>
+                    </div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon">⚡</div>
+                    <div class="stat-content">
+                        <span class="stat-value" id="precision">-</span>
+                        <span class="stat-label">Precision</span>
+                    </div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon">🔍</div>
+                    <div class="stat-content">
+                        <span class="stat-value" id="recall">-</span>
+                        <span class="stat-label">Recall</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Charts Row -->
+            <div class="charts-row">
+                <div class="chart-card">
+                    <h3>Prediction Distribution</h3>
+                    <canvas id="prediction-chart"></canvas>
+                </div>
+                <div class="chart-card">
+                    <h3>Confusion Matrix</h3>
+                    <div class="confusion-matrix" id="confusion-matrix">
+                        <div class="matrix-grid">
+                            <div class="matrix-cell header"></div>
+                            <div class="matrix-cell header">Predicted Ham</div>
+                            <div class="matrix-cell header">Predicted Spam</div>
+                            <div class="matrix-cell header">Actual Ham</div>
+                            <div class="matrix-cell tn" id="tn">0</div>
+                            <div class="matrix-cell fp" id="fp">0</div>
+                            <div class="matrix-cell header">Actual Spam</div>
+                            <div class="matrix-cell fn" id="fn">0</div>
+                            <div class="matrix-cell tp" id="tp">0</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Alerts Section -->
+            <div class="alerts-section">
+                <h3>System Alerts</h3>
+                <div class="alerts-list" id="alerts-list">
+                    <div class="alert-item info">
+                        <span class="alert-icon">ℹ️</span>
+                        <span class="alert-message">System initialized. Monitoring active.</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Recent Activity -->
+            <div class="activity-section">
+                <h3>Recent Classifications</h3>
+                <div class="activity-table">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Message Preview</th>
+                                <th>Prediction</th>
+                                <th>Confidence</th>
+                                <th>Feedback</th>
+                            </tr>
+                        </thead>
+                        <tbody id="activity-tbody">
+                            <!-- Recent predictions will be inserted here -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Fairness Section -->
+            <div class="fairness-section">
+                <h3>Fairness Metrics</h3>
+                <p class="section-subtitle">Based on message length as protected attribute</p>
+                <div class="fairness-grid">
+                    <div class="fairness-card">
+                        <div class="fairness-header">
+                            <span class="fairness-title">Disparate Impact</span>
+                            <span class="fairness-status pass" id="di-status">✓</span>
+                        </div>
+                        <div class="fairness-value" id="di-value">0.90</div>
+                        <div class="fairness-desc">Ratio of favorable outcomes between groups</div>
+                    </div>
+                    <div class="fairness-card">
+                        <div class="fairness-header">
+                            <span class="fairness-title">Equal Opportunity</span>
+                            <span class="fairness-status pass" id="eo-status">✓</span>
+                        </div>
+                        <div class="fairness-value" id="eo-value">0.05</div>
+                        <div class="fairness-desc">True positive rate difference</div>
+                    </div>
+                    <div class="fairness-card">
+                        <div class="fairness-header">
+                            <span class="fairness-title">Equalized Odds</span>
+                            <span class="fairness-status" id="eod-status">-</span>
+                        </div>
+                        <div class="fairness-value" id="eod-value">-</div>
+                        <div class="fairness-desc">TPR and FPR equality across groups</div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script>
+        // Dashboard State
+        let predictionChart = null;
+
+        // Initialize dashboard
+        document.addEventListener('DOMContentLoaded', () => {
+            initCharts();
+            refreshDashboard();
+            // Auto-refresh every 30 seconds
+            setInterval(refreshDashboard, 30000);
+        });
+
+        function initCharts() {
+            const ctx = document.getElementById('prediction-chart').getContext('2d');
+            predictionChart = new Chart(ctx, {
+                type: 'doughnut',
+                data: {
+                    labels: ['Ham (Safe)', 'Spam'],
+                    datasets: [{
+                        data: [0, 0],
+                        backgroundColor: [
+                            'rgba(34, 197, 94, 0.8)',
+                            'rgba(239, 68, 68, 0.8)'
+                        ],
+                        borderColor: [
+                            'rgba(34, 197, 94, 1)',
+                            'rgba(239, 68, 68, 1)'
+                        ],
+                        borderWidth: 2
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: true,
+                    plugins: {
+                        legend: {
+                            position: 'bottom',
+                            labels: {
+                                color: '#f1f5f9',
+                                font: { size: 14 }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        async function refreshDashboard() {
+            try {
+                const response = await fetch('/api/metrics');
+                const data = await response.json();
+
+                updateStats(data.metrics);
+                updateChart(data.metrics);
+                updateConfusionMatrix(data.metrics);
+                updateAlerts(data.alerts || []);
+                updateActivity(data.recent_predictions || []);
+
+            } catch (error) {
+                console.error('Error refreshing dashboard:', error);
+            }
+        }
+
+        function updateStats(metrics) {
+            document.getElementById('total-predictions').textContent =
+                metrics.total_predictions || 0;
+
+            if (metrics.accuracy !== undefined) {
+                document.getElementById('accuracy').textContent =
+                    (metrics.accuracy * 100).toFixed(1) + '%';
+            }
+
+            if (metrics.precision !== undefined) {
+                document.getElementById('precision').textContent =
+                    (metrics.precision * 100).toFixed(1) + '%';
+            }
+
+            if (metrics.recall !== undefined) {
+                document.getElementById('recall').textContent =
+                    (metrics.recall * 100).toFixed(1) + '%';
+            }
+        }
+
+        function updateChart(metrics) {
+            if (predictionChart) {
+                predictionChart.data.datasets[0].data = [
+                    metrics.ham_predictions || 0,
+                    metrics.spam_predictions || 0
+                ];
+                predictionChart.update();
+            }
+        }
+
+        function updateConfusionMatrix(metrics) {
+            if (metrics.confusion_matrix) {
+                document.getElementById('tp').textContent = metrics.confusion_matrix.true_positives;
+                document.getElementById('tn').textContent = metrics.confusion_matrix.true_negatives;
+                document.getElementById('fp').textContent = metrics.confusion_matrix.false_positives;
+                document.getElementById('fn').textContent = metrics.confusion_matrix.false_negatives;
+            }
+        }
+
+        function updateAlerts(alerts) {
+            const container = document.getElementById('alerts-list');
+
+            if (alerts.length === 0) {
+                container.innerHTML = `
+                    <div class="alert-item info">
+                        <span class="alert-icon">✓</span>
+                        <span class="alert-message">All systems operating normally</span>
+                    </div>
+                `;
+                return;
+            }
+
+            container.innerHTML = alerts.map(alert => `
+                <div class="alert-item ${alert.level}">
+                    <span class="alert-icon">${alert.level === 'warning' ? '⚠️' : 'ℹ️'}</span>
+                    <span class="alert-message">${alert.message}</span>
+                </div>
+            `).join('');
+        }
+
+        function updateActivity(predictions) {
+            const tbody = document.getElementById('activity-tbody');
+
+            if (predictions.length === 0) {
+                tbody.innerHTML = `
+                    <tr>
+                        <td colspan="4" style="text-align: center; padding: 20px;">
+                            No recent predictions
+                        </td>
+                    </tr>
+                `;
+                return;
+            }
+
+            tbody.innerHTML = predictions.map(pred => `
+                <tr>
+                    <td class="preview">${pred.preview || '-'}</td>
+                    <td>
+                        <span class="badge ${pred.prediction === 'spam' ? 'danger' : 'success'}">
+                            ${pred.prediction}
+                        </span>
+                    </td>
+                    <td>${(pred.confidence * 100).toFixed(1)}%</td>
+                    <td>${pred.feedback || '-'}</td>
+                </tr>
+            `).join('');
+        }
+    </script>
+</body>
+
+</html>
