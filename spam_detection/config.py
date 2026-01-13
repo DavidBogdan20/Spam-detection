@@ -18,7 +18,7 @@ RANDOM_STATE = 42
 TEST_SIZE = 0.2
 
 # Classification thresholds
-DEFAULT_SPAM_THRESHOLD = 0.5
+DEFAULT_SPAM_THRESHOLD = 0.6
 HIGH_PRECISION_THRESHOLD = 0.7  # Minimize false positives
 
 # Fairness settings

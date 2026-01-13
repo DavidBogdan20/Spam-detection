@@ -418,8 +418,8 @@ class EnsembleClassifier:
     """
     
     def __init__(self,
-                 lr_weight: float = 0.7,
-                 dict_weight: float = 0.3,
+                 lr_weight: float = 0.6,
+                 dict_weight: float = 0.4,
                  threshold: float = DEFAULT_SPAM_THRESHOLD):
         """
         Initialize the ensemble.
@@ -461,6 +461,53 @@ class EnsembleClassifier:
         
         return (combined_scores >= self.threshold).astype(int)
     
+    def predict_proba(self, X: spmatrix) -> np.ndarray:
+        """
+        Get probability predictions from ensemble.
+        
+        Args:
+            X: Feature matrix
+            
+        Returns:
+            Array of shape (n_samples, 2) with [ham_prob, spam_prob]
+        """
+        lr_proba = self.lr_classifier.predict_proba(X)[:, 1]
+        
+        # Get dictionary classifier scores
+        dict_results = self.dict_classifier.predict_with_confidence(X)
+        dict_scores = np.array([r['spam_score'] for r in dict_results])
+        
+        # Weighted average for spam probability
+        spam_proba = (self.lr_weight * lr_proba + self.dict_weight * dict_scores)
+        ham_proba = 1 - spam_proba
+        
+        return np.column_stack([ham_proba, spam_proba])
+    
+    def predict_with_confidence(self, X: spmatrix) -> List[Dict[str, Any]]:
+        """
+        Get predictions with confidence scores.
+        
+        Args:
+            X: Feature matrix
+            
+        Returns:
+            List of dicts with prediction details
+        """
+        proba = self.predict_proba(X)
+        predictions = self.predict(X)
+        
+        results = []
+        for i in range(len(predictions)):
+            results.append({
+                'prediction': 'spam' if predictions[i] == 1 else 'ham',
+                'spam_probability': float(proba[i, 1]),
+                'ham_probability': float(proba[i, 0]),
+                'confidence': float(max(proba[i, 0], proba[i, 1])),
+                'label': int(predictions[i])
+            })
+        
+        return results
+    
     def evaluate(self, X: spmatrix, y: np.ndarray) -> Dict[str, float]:
         """Evaluate ensemble performance."""
         y_pred = self.predict(X)
@@ -471,6 +518,59 @@ class EnsembleClassifier:
             'recall': recall_score(y, y_pred, zero_division=0),
             'f1': f1_score(y, y_pred, zero_division=0),
         }
+    
+    def save(self, filepath: Optional[str] = None) -> str:
+        """Save the ensemble classifier to disk."""
+        if not self._is_fitted:
+            raise ValueError("Cannot save unfitted classifier")
+        
+        if filepath is None:
+            os.makedirs(MODELS_DIR, exist_ok=True)
+            filepath = os.path.join(MODELS_DIR, 'ensemble_classifier.joblib')
+        
+        joblib.dump({
+            'lr_classifier_model': self.lr_classifier.model,
+            'lr_classifier_threshold': self.lr_classifier.threshold,
+            'dict_classifier_spam_kmeans': self.dict_classifier.spam_kmeans,
+            'dict_classifier_ham_kmeans': self.dict_classifier.ham_kmeans,
+            'dict_classifier_n_clusters_spam': self.dict_classifier.n_clusters_spam,
+            'dict_classifier_n_clusters_ham': self.dict_classifier.n_clusters_ham,
+            'lr_weight': self.lr_weight,
+            'dict_weight': self.dict_weight,
+            'threshold': self.threshold,
+        }, filepath)
+        
+        return filepath
+    
+    @classmethod
+    def load(cls, filepath: Optional[str] = None) -> 'EnsembleClassifier':
+        """Load an ensemble classifier from disk."""
+        if filepath is None:
+            filepath = os.path.join(MODELS_DIR, 'ensemble_classifier.joblib')
+        
+        data = joblib.load(filepath)
+        
+        ensemble = cls(
+            lr_weight=data['lr_weight'],
+            dict_weight=data['dict_weight'],
+            threshold=data['threshold'],
+        )
+        
+        # Restore LR classifier
+        ensemble.lr_classifier.model = data['lr_classifier_model']
+        ensemble.lr_classifier.threshold = data['lr_classifier_threshold']
+        ensemble.lr_classifier._is_fitted = True
+        
+        # Restore Dictionary classifier
+        ensemble.dict_classifier.spam_kmeans = data['dict_classifier_spam_kmeans']
+        ensemble.dict_classifier.ham_kmeans = data['dict_classifier_ham_kmeans']
+        ensemble.dict_classifier.n_clusters_spam = data['dict_classifier_n_clusters_spam']
+        ensemble.dict_classifier.n_clusters_ham = data['dict_classifier_n_clusters_ham']
+        ensemble.dict_classifier._is_fitted = True
+        
+        ensemble._is_fitted = True
+        
+        return ensemble
 
 
 if __name__ == '__main__':

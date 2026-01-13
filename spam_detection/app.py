@@ -20,6 +20,7 @@ from config import SECRET_KEY, DEBUG, DATASET_PATH
 from models.preprocessor import TextPreprocessor
 from models.feature_extractor import FeatureExtractor
 from models.classifiers import SpamClassifier
+from models.classifiers import EnsembleClassifier
 from monitoring.metrics_tracker import MetricsTracker
 from monitoring.drift_detector import DriftDetector
 from fairness.metrics import FairnessMetrics
@@ -71,12 +72,12 @@ def init_components(app):
     
     # Check if trained models exist
     models_dir = os.path.join(os.path.dirname(__file__), 'models', 'trained')
-    classifier_path = os.path.join(models_dir, 'spam_classifier.joblib')
+    classifier_path = os.path.join(models_dir, 'ensemble_classifier.joblib')
     vectorizer_path = os.path.join(models_dir, 'vectorizer.joblib')
     
     if os.path.exists(classifier_path) and os.path.exists(vectorizer_path):
         print("Loading pre-trained models...")
-        classifier = SpamClassifier.load(classifier_path)
+        classifier = EnsembleClassifier.load(classifier_path)
         feature_extractor = FeatureExtractor.load(vectorizer_path)
     else:
         print("Training new models...")
@@ -156,12 +157,15 @@ def train_models():
     
     print(f"Feature matrix shape: {X_train_features.shape}")
     
-    # Train classifier
-    print("Training classifier...")
-    classifier = SpamClassifier()
+    # Train ensemble classifier
+    print("Training ensemble classifier...")
+    print("  - Training Logistic Regression...")
+    print("  - Training K-Means Dictionary Learning...")
+    classifier = EnsembleClassifier()
     classifier.fit(X_train_features, y_train.values)
     
     # Evaluate
+    print("Evaluating ensemble...")
     metrics = classifier.evaluate(X_test_features, y_test.values)
     print(f"Test Accuracy: {metrics['accuracy']:.4f}")
     print(f"Test Precision: {metrics['precision']:.4f}")
