@@ -105,24 +105,36 @@ function renderMessages() {
         filteredMessages = messages.filter(m => m.prediction === 'ham');
     }
 
-    listContainer.innerHTML = filteredMessages.map((msg, index) => `
-        <div class="message-item ${msg.prediction}" onclick="selectMessage(${index})" data-index="${index}">
-            <div class="message-indicator ${msg.prediction}">
-                ${msg.prediction === 'spam' ? '⚠️' : '✉️'}
-            </div>
-            <div class="message-content">
-                <div class="message-preview">${escapeHtml(msg.content)}</div>
-                <div class="message-meta">
-                    <span class="message-label ${msg.prediction}">
-                        ${msg.prediction.toUpperCase()}
-                    </span>
-                    <span class="message-confidence">
-                        ${(msg.confidence * 100).toFixed(1)}% confidence
-                    </span>
+    listContainer.innerHTML = filteredMessages.map((msg, index) => {
+        // Check if this is a real email (has subject and from fields)
+        const isRealEmail = msg.subject && msg.from;
+        const previewContent = isRealEmail
+            ? `<div class="message-subject">${escapeHtml(msg.subject)}</div>
+               <div class="message-from">${escapeHtml(msg.from)}</div>`
+            : `<div class="message-preview">${escapeHtml(msg.content)}</div>`;
+
+        const dateInfo = msg.date ? `<span class="message-date">${msg.date}</span>` : '';
+
+        return `
+            <div class="message-item ${msg.prediction}" onclick="selectMessage(${index})" data-index="${index}">
+                <div class="message-indicator ${msg.prediction}">
+                    ${msg.prediction === 'spam' ? '⚠️' : '✉️'}
+                </div>
+                <div class="message-content">
+                    ${previewContent}
+                    <div class="message-meta">
+                        <span class="message-label ${msg.prediction}">
+                            ${msg.prediction.toUpperCase()}
+                        </span>
+                        <span class="message-confidence">
+                            ${(msg.confidence * 100).toFixed(1)}% confidence
+                        </span>
+                        ${dateInfo}
+                    </div>
                 </div>
             </div>
-        </div>
-    `).join('');
+        `;
+    }).join('');
 }
 
 function updateCounts() {
@@ -359,9 +371,10 @@ function escapeHtml(text) {
 
 // Handle keyboard shortcuts
 document.addEventListener('keydown', (e) => {
-    // Escape to close modal
+    // Escape to close modals
     if (e.key === 'Escape') {
         closeComposeModal();
+        closeEmailModal();
     }
 
     // Ctrl+Enter to submit test message
@@ -372,3 +385,153 @@ document.addEventListener('keydown', (e) => {
         }
     }
 });
+
+// ==================== Email Integration ====================
+
+let isEmailConnected = false;
+let connectedEmailAddress = null;
+
+function openEmailModal() {
+    document.getElementById('email-modal').classList.add('active');
+    checkEmailStatus();
+}
+
+function closeEmailModal() {
+    document.getElementById('email-modal').classList.remove('active');
+    // Clear password field for security
+    document.getElementById('email-password').value = '';
+    document.getElementById('email-error').style.display = 'none';
+}
+
+async function checkEmailStatus() {
+    try {
+        const status = await apiCall('/email/status');
+        updateEmailUI(status.connected, status.email);
+    } catch (error) {
+        console.error('Error checking email status:', error);
+    }
+}
+
+function updateEmailUI(connected, email) {
+    isEmailConnected = connected;
+    connectedEmailAddress = email;
+
+    const connectForm = document.getElementById('email-connect-form');
+    const connectedInfo = document.getElementById('email-connected-info');
+    const connectBtn = document.getElementById('connect-btn');
+    const disconnectBtn = document.getElementById('disconnect-btn');
+    const emailBtnText = document.getElementById('email-btn-text');
+
+    if (connected) {
+        connectForm.style.display = 'none';
+        connectedInfo.style.display = 'block';
+        connectBtn.style.display = 'none';
+        disconnectBtn.style.display = 'inline-flex';
+        document.getElementById('connected-email').textContent = email;
+        emailBtnText.textContent = 'Email Connected';
+    } else {
+        connectForm.style.display = 'block';
+        connectedInfo.style.display = 'none';
+        connectBtn.style.display = 'inline-flex';
+        disconnectBtn.style.display = 'none';
+        emailBtnText.textContent = 'Connect Email';
+    }
+}
+
+async function connectEmail() {
+    const email = document.getElementById('email-address').value.trim();
+    const password = document.getElementById('email-password').value;
+    const provider = document.getElementById('email-provider').value;
+    const errorDiv = document.getElementById('email-error');
+    const connectBtn = document.getElementById('connect-btn');
+
+    // Validation
+    if (!email || !password) {
+        errorDiv.textContent = 'Please enter both email and app password.';
+        errorDiv.style.display = 'block';
+        return;
+    }
+
+    // Show loading state
+    connectBtn.disabled = true;
+    connectBtn.innerHTML = '<span>⏳</span> Connecting...';
+    errorDiv.style.display = 'none';
+
+    try {
+        const result = await apiCall('/email/connect', {
+            method: 'POST',
+            body: JSON.stringify({
+                email: email,
+                password: password,
+                imap_server: provider || null
+            })
+        });
+
+        if (result.success) {
+            showToast('✓ Connected to ' + email, 'success');
+            updateEmailUI(true, email);
+
+            // Fetch emails
+            await fetchRealEmails();
+            closeEmailModal();
+        } else {
+            errorDiv.textContent = result.message || 'Connection failed. Please check your credentials.';
+            errorDiv.style.display = 'block';
+        }
+    } catch (error) {
+        errorDiv.textContent = 'Connection failed. Make sure you\'re using an App Password, not your regular password.';
+        errorDiv.style.display = 'block';
+    } finally {
+        connectBtn.disabled = false;
+        connectBtn.innerHTML = '<span>🔗</span> Connect & Fetch Emails';
+    }
+}
+
+async function disconnectEmail() {
+    try {
+        await apiCall('/email/disconnect', { method: 'POST' });
+        showToast('Disconnected from email', 'success');
+        updateEmailUI(false, null);
+
+        // Clear password field
+        document.getElementById('email-password').value = '';
+
+        // Reload sample messages
+        await loadMessages();
+    } catch (error) {
+        showToast('Error disconnecting', 'error');
+    }
+}
+
+async function fetchRealEmails() {
+    const listContainer = document.getElementById('messages-list');
+    listContainer.innerHTML = `
+        <div class="loading-state">
+            <div class="loading-spinner"></div>
+            <p>Fetching your emails...</p>
+        </div>
+    `;
+
+    try {
+        const result = await apiCall('/email/fetch?limit=30');
+
+        if (result.success) {
+            messages = result.emails || [];
+
+            // Update counts
+            spamCount = messages.filter(m => m.prediction === 'spam').length;
+            hamCount = messages.filter(m => m.prediction === 'ham').length;
+
+            updateCounts();
+            renderMessages();
+
+            showToast(`✓ Fetched ${messages.length} emails from ${result.email_account}`, 'success');
+        } else {
+            showToast(result.message || 'Failed to fetch emails', 'error');
+            await loadMessages(); // Fallback to sample messages
+        }
+    } catch (error) {
+        showToast('Error fetching emails', 'error');
+        await loadMessages(); // Fallback to sample messages
+    }
+}

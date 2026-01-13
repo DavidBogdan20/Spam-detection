@@ -49,6 +49,11 @@ def create_app():
         """Render the monitoring dashboard."""
         return render_template('dashboard.html')
     
+    @app.route('/email-inbox')
+    def email_inbox():
+        """Render the email inbox page for real emails."""
+        return render_template('email_inbox.html')
+    
     @app.errorhandler(404)
     def not_found(e):
         return jsonify({'error': 'Not found'}), 404

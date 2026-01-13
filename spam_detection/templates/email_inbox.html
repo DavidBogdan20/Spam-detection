@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Spam Shield - AI-Powered Spam Detection</title>
+    <title>Email Inbox - Spam Shield</title>
     <link rel="stylesheet" href="/static/css/style.css?v=3">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 </head>
@@ -19,14 +19,14 @@
             </div>
 
             <nav class="nav-menu">
-                <a href="/" class="nav-item active">
+                <a href="/" class="nav-item">
                     <span class="nav-icon">📥</span>
                     <span>Sample Inbox</span>
-                    <span class="badge" id="inbox-count">0</span>
                 </a>
-                <a href="/email-inbox" class="nav-item">
+                <a href="/email-inbox" class="nav-item active">
                     <span class="nav-icon">📧</span>
                     <span>Email Inbox</span>
+                    <span class="badge" id="email-count">0</span>
                 </a>
                 <a href="/dashboard" class="nav-item">
                     <span class="nav-icon">📊</span>
@@ -47,18 +47,15 @@
             <!-- Header -->
             <header class="header">
                 <div class="header-left">
-                    <h1>📥 Sample Inbox</h1>
-                    <p class="header-subtitle" id="total-messages">Loading messages...</p>
+                    <h1>📧 Email Inbox</h1>
+                    <p class="header-subtitle" id="connection-status">Not connected</p>
                 </div>
                 <div class="header-right">
-                    <a href="/email-inbox" class="btn btn-secondary">
-                        <span>📧</span> Email Inbox
-                    </a>
-                    <button class="btn btn-secondary" onclick="refreshMessages()">
-                        <span>🔄</span> Refresh
+                    <button class="btn btn-secondary" id="email-connect-btn" onclick="openEmailModal()">
+                        <span>🔗</span> <span id="email-btn-text">Connect Email</span>
                     </button>
-                    <button class="btn btn-primary" onclick="openComposeModal()">
-                        <span>✏️</span> Test Message
+                    <button class="btn btn-secondary" onclick="refreshEmails()" id="refresh-btn" disabled>
+                        <span>🔄</span> Refresh
                     </button>
                 </div>
             </header>
@@ -67,12 +64,13 @@
             <div class="messages-container">
                 <div class="messages-header">
                     <div class="filter-tabs">
-                        <button class="filter-tab active" onclick="filterMessages('all')">All</button>
-                        <button class="filter-tab" onclick="filterMessages('spam')">Spam</button>
-                        <button class="filter-tab" onclick="filterMessages('ham')">Safe</button>
+                        <button class="filter-tab active" onclick="filterEmails('all')">All</button>
+                        <button class="filter-tab" onclick="filterEmails('spam')">Spam</button>
+                        <button class="filter-tab" onclick="filterEmails('ham')">Safe</button>
                     </div>
                     <div class="sort-options">
-                        <select id="sort-by" onchange="sortMessages()">
+                        <select id="sort-by" onchange="sortEmails()">
+                            <option value="date">Sort by Date</option>
                             <option value="confidence">Sort by Confidence</option>
                             <option value="prediction">Sort by Classification</option>
                         </select>
@@ -80,10 +78,14 @@
                 </div>
 
                 <div class="messages-list" id="messages-list">
-                    <!-- Messages will be inserted here -->
-                    <div class="loading-state">
-                        <div class="loading-spinner"></div>
-                        <p>Analyzing messages...</p>
+                    <!-- Connection prompt -->
+                    <div class="loading-state" id="connect-prompt">
+                        <div class="empty-icon">📧</div>
+                        <h3>Connect Your Email</h3>
+                        <p>Click "Connect Email" to fetch and analyze your real emails</p>
+                        <button class="btn btn-primary" onclick="openEmailModal()" style="margin-top: 16px;">
+                            <span>🔗</span> Connect Email Account
+                        </button>
                     </div>
                 </div>
             </div>
@@ -93,16 +95,21 @@
         <aside class="detail-panel" id="detail-panel">
             <div class="detail-empty">
                 <div class="empty-icon">📧</div>
-                <h3>No message selected</h3>
-                <p>Click on a message to view details</p>
+                <h3>No email selected</h3>
+                <p>Click on an email to view details</p>
             </div>
 
             <div class="detail-content" id="detail-content" style="display: none;">
                 <div class="detail-header">
-                    <h2 id="detail-subject">Message Details</h2>
+                    <h2 id="detail-subject">Email Details</h2>
                     <div class="detail-classification" id="detail-classification">
                         <span class="classification-badge">Analyzing...</span>
                     </div>
+                </div>
+
+                <div class="email-info">
+                    <p><strong>From:</strong> <span id="detail-from">-</span></p>
+                    <p><strong>Date:</strong> <span id="detail-date">-</span></p>
                 </div>
 
                 <div class="confidence-meter">
@@ -114,7 +121,7 @@
                 </div>
 
                 <div class="detail-body">
-                    <h4>Message Content</h4>
+                    <h4>Email Content</h4>
                     <div class="message-full-content" id="message-full-content">
                         <!-- Full message content -->
                     </div>
@@ -144,53 +151,69 @@
                             <span class="metadata-label">Ham Probability</span>
                             <span class="metadata-value" id="ham-prob">-</span>
                         </div>
-                        <div class="metadata-item">
-                            <span class="metadata-label">True Label</span>
-                            <span class="metadata-value" id="true-label">-</span>
-                        </div>
-                        <div class="metadata-item">
-                            <span class="metadata-label">Message Length</span>
-                            <span class="metadata-value" id="msg-length">-</span>
-                        </div>
                     </div>
                 </div>
             </div>
         </aside>
     </div>
 
-    <!-- Compose/Test Modal -->
-    <div class="modal" id="compose-modal">
-        <div class="modal-backdrop" onclick="closeComposeModal()"></div>
+    <!-- Email Connect Modal -->
+    <div class="modal" id="email-modal">
+        <div class="modal-backdrop" onclick="closeEmailModal()"></div>
         <div class="modal-content">
             <div class="modal-header">
-                <h2>Test Message Classification</h2>
-                <button class="modal-close" onclick="closeComposeModal()">×</button>
+                <h2>📧 Connect Your Email</h2>
+                <button class="modal-close" onclick="closeEmailModal()">×</button>
             </div>
             <div class="modal-body">
-                <div class="form-group">
-                    <label for="test-message">Enter a message to classify:</label>
-                    <textarea id="test-message" rows="5" placeholder="Type or paste a message here..."></textarea>
-                </div>
-                <div class="test-result" id="test-result" style="display: none;">
-                    <div class="result-header">
-                        <span class="result-badge" id="result-badge">-</span>
-                        <span class="result-confidence" id="result-confidence">-</span>
+                <div id="email-connect-form">
+                    <p class="modal-description">Connect to your email account to analyze your real emails with AI spam
+                        detection.</p>
+
+                    <div class="form-group">
+                        <label for="email-address">Email Address</label>
+                        <input type="email" id="email-address" placeholder="your@email.com">
                     </div>
-                    <div class="result-details">
-                        <div class="result-bar">
-                            <div class="result-bar-spam" id="result-bar-spam" style="width: 50%"></div>
-                        </div>
-                        <div class="result-labels">
-                            <span>Ham</span>
-                            <span>Spam</span>
-                        </div>
+
+                    <div class="form-group">
+                        <label for="email-password">App Password</label>
+                        <input type="password" id="email-password"
+                            placeholder="Your app password (not regular password)">
+                        <small class="form-hint">⚠️ Use an App Password, not your regular password. <a
+                                href="https://myaccount.google.com/apppasswords" target="_blank">Get Gmail App
+                                Password</a></small>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="email-provider">Email Provider</label>
+                        <select id="email-provider">
+                            <option value="">Auto-detect from email</option>
+                            <option value="imap.gmail.com">Gmail</option>
+                            <option value="imap.mail.yahoo.com">Yahoo Mail</option>
+                            <option value="imap-mail.outlook.com">Outlook / Hotmail</option>
+                            <option value="imap.mail.me.com">iCloud</option>
+                            <option value="imap.aol.com">AOL</option>
+                        </select>
                     </div>
                 </div>
+
+                <div id="email-connected-info" style="display: none;">
+                    <div class="connected-status">
+                        <div class="connected-icon">✅</div>
+                        <h3>Connected!</h3>
+                        <p id="connected-email">your@email.com</p>
+                    </div>
+                </div>
+
+                <div id="email-error" class="error-message" style="display: none;"></div>
             </div>
             <div class="modal-footer">
-                <button class="btn btn-secondary" onclick="closeComposeModal()">Close</button>
-                <button class="btn btn-primary" onclick="testMessage()">
-                    <span>🔍</span> Analyze
+                <button class="btn btn-secondary" onclick="closeEmailModal()">Close</button>
+                <button class="btn btn-danger" id="disconnect-btn" onclick="disconnectEmail()" style="display: none;">
+                    <span>🔌</span> Disconnect
+                </button>
+                <button class="btn btn-primary" id="connect-btn" onclick="connectEmail()">
+                    <span>🔗</span> Connect & Fetch Emails
                 </button>
             </div>
         </div>
@@ -199,7 +222,7 @@
     <!-- Toast Notification -->
     <div class="toast-container" id="toast-container"></div>
 
-    <script src="/static/js/app.js"></script>
+    <script src="/static/js/email_inbox.js?v=1"></script>
 </body>
 
 </html>

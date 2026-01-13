@@ -7,11 +7,15 @@ Endpoints:
 - GET /api/metrics - Get current metrics
 - GET /api/messages - Get sample messages for inbox
 - GET /api/fairness - Get fairness metrics
+- POST /api/email/connect - Connect to email provider
+- GET /api/email/fetch - Fetch and analyze real emails
+- POST /api/email/disconnect - Disconnect from email
 """
 import os
 import uuid
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, request, jsonify, session
 import numpy as np
+from api.email_fetcher import EmailFetcher
 
 api_bp = Blueprint('api', __name__, url_prefix='/api')
 
@@ -23,6 +27,7 @@ metrics_tracker = None
 drift_detector = None
 fairness_metrics = None
 sample_messages = []
+email_fetcher = EmailFetcher()  # Email fetcher instance
 
 
 def init_api(clf, fe, pp, mt, dd, fm, msgs):
@@ -353,3 +358,171 @@ def model_info():
             pass
     
     return jsonify(info)
+
+
+# ==================== Email Integration ====================
+
+@api_bp.route('/email/connect', methods=['POST'])
+def email_connect():
+    """
+    Connect to an email provider via IMAP.
+    
+    Request body:
+        {
+            "email": "user@gmail.com",
+            "password": "app-password",
+            "imap_server": "imap.gmail.com" (optional, auto-detected)
+        }
+    
+    Response:
+        {
+            "success": true,
+            "message": "Connected successfully",
+            "email": "user@gmail.com"
+        }
+    """
+    global email_fetcher
+    
+    data = request.get_json()
+    if not data:
+        return jsonify({'success': False, 'message': 'Missing request body'}), 400
+    
+    email_addr = data.get('email', '').strip()
+    password = data.get('password', '')
+    imap_server = data.get('imap_server')  # Optional
+    
+    if not email_addr or not password:
+        return jsonify({'success': False, 'message': 'Email and password are required'}), 400
+    
+    # Validate email format
+    if '@' not in email_addr:
+        return jsonify({'success': False, 'message': 'Invalid email format'}), 400
+    
+    # Disconnect any existing connection
+    if email_fetcher.is_connected:
+        email_fetcher.disconnect()
+    
+    # Connect
+    success, message = email_fetcher.connect(email_addr, password, imap_server)
+    
+    if success:
+        return jsonify({
+            'success': True,
+            'message': message,
+            'email': email_addr
+        })
+    else:
+        return jsonify({'success': False, 'message': message}), 401
+
+
+@api_bp.route('/email/fetch', methods=['GET'])
+def email_fetch():
+    """
+    Fetch and analyze real emails from connected account.
+    
+    Query params:
+        - limit: Number of emails to fetch (default: 30, max: 50)
+        - folder: Mailbox folder (default: INBOX)
+    
+    Response:
+        {
+            "success": true,
+            "emails": [
+                {
+                    "id": "email_123",
+                    "subject": "Hello",
+                    "from": "sender@example.com",
+                    "date": "2024-01-01 12:00",
+                    "content": "...",
+                    "prediction": "ham",
+                    "confidence": 0.95,
+                    "spam_probability": 0.05
+                },
+                ...
+            ],
+            "total": 30
+        }
+    """
+    global email_fetcher
+    
+    if not email_fetcher.is_connected:
+        return jsonify({'success': False, 'message': 'Not connected to email. Please connect first.'}), 401
+    
+    limit = min(request.args.get('limit', 30, type=int), 50)
+    folder = request.args.get('folder', 'INBOX')
+    
+    # Fetch emails
+    emails, error = email_fetcher.fetch_recent(limit=limit, folder=folder)
+    
+    if error:
+        return jsonify({'success': False, 'message': error}), 500
+    
+    if not emails:
+        return jsonify({'success': True, 'emails': [], 'total': 0})
+    
+    # Classify emails if model is available
+    if classifier and feature_extractor and preprocessor:
+        contents = [e['content'] for e in emails]
+        processed = preprocessor.preprocess_batch(contents)
+        features = feature_extractor.transform(processed)
+        predictions = classifier.predict_with_confidence(features)
+        
+        for i, email_data in enumerate(emails):
+            pred = predictions[i]
+            email_data['prediction'] = pred['prediction']
+            email_data['confidence'] = pred['confidence']
+            email_data['spam_probability'] = pred['spam_probability']
+            email_data['true_label'] = 'real_email'  # Mark as real email
+    else:
+        # No model - just return emails without classification
+        for email_data in emails:
+            email_data['prediction'] = 'unknown'
+            email_data['confidence'] = 0
+            email_data['spam_probability'] = 0.5
+    
+    return jsonify({
+        'success': True,
+        'emails': emails,
+        'total': len(emails),
+        'email_account': email_fetcher.email_address
+    })
+
+
+@api_bp.route('/email/disconnect', methods=['POST'])
+def email_disconnect():
+    """
+    Disconnect from email provider.
+    
+    Response:
+        {
+            "success": true,
+            "message": "Disconnected successfully"
+        }
+    """
+    global email_fetcher
+    
+    email_fetcher.disconnect()
+    
+    return jsonify({
+        'success': True,
+        'message': 'Disconnected successfully'
+    })
+
+
+@api_bp.route('/email/status', methods=['GET'])
+def email_status():
+    """
+    Get email connection status.
+    
+    Response:
+        {
+            "connected": true,
+            "email": "user@gmail.com"
+        }
+    """
+    global email_fetcher
+    
+    return jsonify({
+        'connected': email_fetcher.is_connected,
+        'email': email_fetcher.email_address
+    })
