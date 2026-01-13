@@ -31,11 +31,11 @@ async function apiCall(endpoint, options = {}) {
             },
             ...options
         });
-        
+
         if (!response.ok) {
             throw new Error(`API error: ${response.status}`);
         }
-        
+
         return await response.json();
     } catch (error) {
         console.error('API Error:', error);
@@ -48,7 +48,7 @@ async function checkModelStatus() {
     try {
         const status = await apiCall('/health');
         const statusDot = document.querySelector('.status-dot');
-        
+
         if (status.model_loaded) {
             statusDot.style.background = 'var(--success)';
         } else {
@@ -63,18 +63,18 @@ async function checkModelStatus() {
 
 async function loadMessages() {
     const listContainer = document.getElementById('messages-list');
-    
+
     try {
         const data = await apiCall(`/messages?limit=50&filter=${currentFilter}`);
         messages = data.messages || [];
-        
+
         // Update counts
         spamCount = messages.filter(m => m.prediction === 'spam').length;
         hamCount = messages.filter(m => m.prediction === 'ham').length;
-        
+
         updateCounts();
         renderMessages();
-        
+
     } catch (error) {
         listContainer.innerHTML = `
             <div class="loading-state">
@@ -86,7 +86,7 @@ async function loadMessages() {
 
 function renderMessages() {
     const listContainer = document.getElementById('messages-list');
-    
+
     if (messages.length === 0) {
         listContainer.innerHTML = `
             <div class="loading-state">
@@ -96,7 +96,7 @@ function renderMessages() {
         `;
         return;
     }
-    
+
     // Filter messages based on current filter
     let filteredMessages = messages;
     if (currentFilter === 'spam') {
@@ -104,7 +104,7 @@ function renderMessages() {
     } else if (currentFilter === 'ham') {
         filteredMessages = messages.filter(m => m.prediction === 'ham');
     }
-    
+
     listContainer.innerHTML = filteredMessages.map((msg, index) => `
         <div class="message-item ${msg.prediction}" onclick="selectMessage(${index})" data-index="${index}">
             <div class="message-indicator ${msg.prediction}">
@@ -126,10 +126,15 @@ function renderMessages() {
 }
 
 function updateCounts() {
-    document.getElementById('inbox-count').textContent = messages.length;
-    document.getElementById('spam-count').textContent = spamCount;
-    document.getElementById('ham-count').textContent = hamCount;
-    document.getElementById('total-messages').textContent = `${messages.length} messages`;
+    const inboxCount = document.getElementById('inbox-count');
+    const spamCountEl = document.getElementById('spam-count');
+    const hamCountEl = document.getElementById('ham-count');
+    const totalMessages = document.getElementById('total-messages');
+
+    if (inboxCount) inboxCount.textContent = messages.length;
+    if (spamCountEl) spamCountEl.textContent = spamCount;
+    if (hamCountEl) hamCountEl.textContent = hamCount;
+    if (totalMessages) totalMessages.textContent = `${messages.length} messages`;
 }
 
 function selectMessage(index) {
@@ -137,15 +142,15 @@ function selectMessage(index) {
     document.querySelectorAll('.message-item').forEach(el => {
         el.classList.remove('selected');
     });
-    
+
     const selectedEl = document.querySelector(`[data-index="${index}"]`);
     if (selectedEl) {
         selectedEl.classList.add('selected');
     }
-    
+
     // Update current message
     currentMessage = messages[index];
-    
+
     // Show detail panel
     showMessageDetail(currentMessage);
 }
@@ -153,10 +158,10 @@ function selectMessage(index) {
 function showMessageDetail(msg) {
     const emptyState = document.querySelector('.detail-empty');
     const detailContent = document.getElementById('detail-content');
-    
+
     emptyState.style.display = 'none';
     detailContent.style.display = 'block';
-    
+
     // Update classification badge
     const classification = document.getElementById('detail-classification');
     classification.innerHTML = `
@@ -164,15 +169,15 @@ function showMessageDetail(msg) {
             ${msg.prediction === 'spam' ? '⚠️ SPAM' : '✅ SAFE'}
         </span>
     `;
-    
+
     // Update confidence meter
     const confidence = msg.confidence * 100;
     document.getElementById('confidence-fill').style.width = `${confidence}%`;
     document.getElementById('confidence-value').textContent = `${confidence.toFixed(1)}%`;
-    
+
     // Update full content
     document.getElementById('message-full-content').textContent = msg.content;
-    
+
     // Update metadata
     document.getElementById('spam-prob').textContent = `${(msg.spam_probability * 100).toFixed(1)}%`;
     document.getElementById('ham-prob').textContent = `${((1 - msg.spam_probability) * 100).toFixed(1)}%`;
@@ -184,21 +189,26 @@ function showMessageDetail(msg) {
 
 function filterMessages(filter) {
     currentFilter = filter;
-    
+
     // Update tab UI
     document.querySelectorAll('.filter-tab').forEach(tab => {
         tab.classList.remove('active');
+        // Find the correct tab by checking its onclick or text content
+        const tabText = tab.textContent.trim().toLowerCase();
+        if ((filter === 'all' && tabText === 'all') ||
+            (filter === 'spam' && tabText === 'spam') ||
+            (filter === 'ham' && tabText === 'safe')) {
+            tab.classList.add('active');
+        }
     });
-    
-    event.target.classList.add('active');
-    
+
     // Re-render with filter
     renderMessages();
 }
 
 function sortMessages() {
     const sortBy = document.getElementById('sort-by').value;
-    
+
     if (sortBy === 'confidence') {
         messages.sort((a, b) => b.confidence - a.confidence);
     } else if (sortBy === 'prediction') {
@@ -208,7 +218,7 @@ function sortMessages() {
             return 0;
         });
     }
-    
+
     renderMessages();
 }
 
@@ -224,10 +234,10 @@ async function submitFeedback(correctLabel) {
         showToast('No message selected', 'error');
         return;
     }
-    
+
     try {
         const originalPrediction = currentMessage.prediction === 'spam' ? 1 : 0;
-        
+
         await apiCall('/feedback', {
             method: 'POST',
             body: JSON.stringify({
@@ -237,10 +247,10 @@ async function submitFeedback(correctLabel) {
                 message: currentMessage.content
             })
         });
-        
+
         const feedbackText = correctLabel === 1 ? 'Marked as spam' : 'Marked as safe';
         showToast(`✓ ${feedbackText}. Thank you for your feedback!`, 'success');
-        
+
     } catch (error) {
         showToast('Failed to submit feedback', 'error');
     }
@@ -262,32 +272,57 @@ function closeComposeModal() {
 
 async function testMessage() {
     const message = document.getElementById('test-message').value.trim();
-    
+
     if (!message) {
         showToast('Please enter a message', 'error');
         return;
     }
-    
+
     try {
         const result = await apiCall('/classify', {
             method: 'POST',
             body: JSON.stringify({ message })
         });
-        
+
         // Show result
         const resultDiv = document.getElementById('test-result');
         resultDiv.style.display = 'block';
-        
+
         const badge = document.getElementById('result-badge');
         badge.textContent = result.prediction.toUpperCase();
         badge.className = `result-badge ${result.prediction}`;
-        
-        document.getElementById('result-confidence').textContent = 
+
+        document.getElementById('result-confidence').textContent =
             `${(result.confidence * 100).toFixed(1)}% confident`;
-        
-        document.getElementById('result-bar-spam').style.width = 
+
+        document.getElementById('result-bar-spam').style.width =
             `${result.spam_probability * 100}%`;
-        
+
+        // Add the message to the inbox
+        const newMessage = {
+            id: result.id,
+            content: message,
+            prediction: result.prediction,
+            confidence: result.confidence,
+            spam_probability: result.spam_probability,
+            true_label: 'user_submitted'
+        };
+
+        // Add to the beginning of the messages array
+        messages.unshift(newMessage);
+
+        // Update counts
+        if (result.prediction === 'spam') {
+            spamCount++;
+        } else {
+            hamCount++;
+        }
+
+        updateCounts();
+        renderMessages();
+
+        showToast(`Message added to inbox as ${result.prediction.toUpperCase()}`, 'success');
+
     } catch (error) {
         showToast('Classification failed', 'error');
     }
@@ -297,16 +332,16 @@ async function testMessage() {
 
 function showToast(message, type = 'info') {
     const container = document.getElementById('toast-container');
-    
+
     const toast = document.createElement('div');
     toast.className = `toast ${type}`;
     toast.innerHTML = `
         <span>${type === 'success' ? '✓' : type === 'error' ? '✕' : 'ℹ'}</span>
         <span>${message}</span>
     `;
-    
+
     container.appendChild(toast);
-    
+
     // Auto-remove after 4 seconds
     setTimeout(() => {
         toast.style.animation = 'toastSlideIn 0.3s ease reverse';
@@ -328,7 +363,7 @@ document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') {
         closeComposeModal();
     }
-    
+
     // Ctrl+Enter to submit test message
     if (e.ctrlKey && e.key === 'Enter') {
         const modal = document.getElementById('compose-modal');
